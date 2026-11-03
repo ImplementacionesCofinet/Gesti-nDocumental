@@ -1,49 +1,45 @@
-# Paquete para implementación interna
+# Implementación de Gestión Documental
 
-## Contenido
+## Arquitectura objetivo
 
-- `app/`: pantallas del aplicativo y rutas de API.
-- `components/`: componentes visuales reutilizables.
-- `db/`: esquema Drizzle vigente para D1/SQLite del demo.
-- `drizzle/`: migraciones del demo.
-- `public/demo/`: archivos de ejemplo usados en la demostración.
-- `lib/`: utilidades de lectura del Excel DIAN.
-- `docs/Modelo_Datos_TI.md`: explicación funcional y de trazabilidad.
-- `docs/schema-postgresql.sql`: estructura recomendada para la base empresarial.
-- `README.md`: instrucciones generales del proyecto.
+- Aplicación Next.js desplegada en Vercel.
+- PostgreSQL administrado por Neon mediante Drizzle ORM.
+- PDF, XML y soportes en una biblioteca privada de SharePoint, accedida desde el backend mediante Microsoft Graph.
+- Inicio de sesión y asignación de roles con Microsoft Entra ID y Auth.js.
 
-## Variables de entorno necesarias
+El código está en `gestion-facturas-ti-2026-10-19/`. La guía para instalar y desplegar está en su `README.md`.
 
-Los valores reales deben configurarse en el administrador de secretos del entorno, nunca dentro del repositorio:
+## Configuración que debe entregar TI
 
-```text
-GRAPH_TENANT_ID=
-GRAPH_CLIENT_ID=
-GRAPH_CLIENT_SECRET=
-INVOICE_MAILBOX_ADDRESS=analista.contable@cofinet.com.au
-```
+- Proyecto Vercel y dominio corporativo.
+- Base Neon y `DATABASE_URL` protegida.
+- Registro de Entra para inicio de sesión y credenciales Graph.
+- Lista de emails y roles en `APP_ROLE_ASSIGNMENTS`; áreas y centros de costo opcionales en `APP_USER_PROFILES`.
+- `CRON_SECRET` para sincronizar el buzón cada cinco minutos desde Vercel Cron; confirmar que el plan Vercel soporte esa frecuencia.
+- Buzón compartido configurado en `INVOICE_MAILBOX_ADDRESS`.
+- Sitio SharePoint privado y permiso de aplicación `Sites.Selected` con acceso de escritura solo al sitio del aplicativo.
+- Consentimiento de administrador para `Mail.Read` (Application) y `Sites.Selected` (Application).
+- Restringir `Mail.Read` al buzón de facturas con Exchange Application RBAC.
+- Política de backups de Neon, retención de SharePoint, rotación de secretos y monitoreo.
 
-En la instalación actual, los bindings de Cloudflare son:
+Los secretos se guardan en Vercel Environment Variables; no deben incluirse en el repositorio ni enviarse por chat.
 
-```text
-DB=base D1/SQLite
-BUCKET=almacenamiento privado para PDF, XML y soportes
-```
+## Migraciones y validación
 
-Para producción debe definirse además el proveedor de autenticación corporativa, la política de permisos y el almacenamiento de backups.
+Las migraciones inicial e incremental de PostgreSQL están en `gestion-facturas-ti-2026-10-19/drizzle/postgres/`. Después de configurar `DATABASE_URL`, aplicar una sola vez con `pnpm db:migrate`; no ejecutar migraciones en cada build.
 
-## Puesta en marcha del código
+Comprobaciones antes del despliegue:
 
-```bash
-pnpm install --frozen-lockfile
+```sh
+pnpm exec tsc --noEmit
 pnpm run lint
-pnpm run build
-pnpm run dev
+pnpm build
 ```
 
-## Consideraciones antes de producción
+No se ha conectado ni publicado aún en cuentas de Vercel, Neon, Entra o SharePoint. Tampoco existe un importador automático desde una instalación D1 anterior; revisar y migrar cualquier dato que deba conservarse antes del corte.
 
-El demo ya expone la ingesta Graph, lectura de ZIP, validación del NIT, consulta del listado DIAN, descarga de documentos, previsualización PDF, roles, flujo de bandejas e indicadores. Para dejarlo en firme, TI debe trasladar a persistencia empresarial los datos que durante la demostración se manejan en memoria de interfaz: visitas de workflow, comentarios, motivos, causaciones, pagos, certificados, legalizaciones y eventos de auditoría. Las tablas necesarias están incluidas en `schema-postgresql.sql`.
+## Alcance funcional pendiente
 
-También debe reemplazarse la respuesta simulada de `app/api/dian/radicate/route.ts` por la integración oficial autorizada cuando la empresa cuente con certificado y credenciales DIAN.
+La conciliación del Excel DIAN está disponible. La consulta oficial de XML por CUFE y la radicación directa ante DIAN están deshabilitadas hasta contar con acceso e integración autorizados; la aplicación no debe presentarlas como funciones disponibles.
 
+El esquema operativo actual persiste facturas, archivos, idempotencia de ingesta e información de workflow. El modelo normalizado empresarial descrito en `Modelo_Datos_TI.md` sigue siendo referencia para ampliar auditoría, visitas de bandeja, causaciones y pagos.

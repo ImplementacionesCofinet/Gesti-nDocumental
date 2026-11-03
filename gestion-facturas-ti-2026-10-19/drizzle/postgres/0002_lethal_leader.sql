@@ -1,0 +1,1 @@
+ALTER TABLE "invoice_records" ALTER COLUMN "amount" SET DATA TYPE bigint;

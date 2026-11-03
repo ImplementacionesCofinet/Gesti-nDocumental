@@ -1,0 +1,1 @@
+ALTER TABLE "invoice_records" ADD COLUMN "workflow_state" jsonb DEFAULT '{}'::jsonb NOT NULL;
