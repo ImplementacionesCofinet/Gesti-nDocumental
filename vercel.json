@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/inbox/sync?cron=1",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
+{}
