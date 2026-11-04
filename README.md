@@ -25,6 +25,7 @@ Copia `.env.example` a `.env.local` para desarrollo. En Vercel configura las mis
 - `INVOICE_MAILBOX_ADDRESS`: buzón compartido de facturas; no hay un valor por defecto.
 - `SHAREPOINT_SITE_ID`: ID del sitio; la app resuelve la biblioteca predeterminada automáticamente.
 - `SHAREPOINT_DRIVE_ID`: opcional; configura un drive específico si el sitio tiene más de una biblioteca.
+- `SHAREPOINT_DOCUMENT_FOLDER`: ruta base dentro de la biblioteca, por ejemplo `Facturas recibidas` o `Aprobaciones de facturas 2 (EN DESARROLLO)/Facturas recibidas`. La app crea las carpetas que falten.
 
 En Entra registra la URL de callback `https://<dominio-vercel>/api/auth/callback/microsoft-entra-id`. Concede consentimiento de administrador para Microsoft Graph `Mail.Read` (Application) y `Sites.Selected` (Application). TI debe otorgar a la aplicación acceso `write` solo al sitio documental destinado al aplicativo. Restringe también el permiso de correo a `INVOICE_MAILBOX_ADDRESS` mediante Exchange Application RBAC; no dejes `Mail.Read` con alcance a todos los buzones. No concedas `Sites.ReadWrite.All` si `Sites.Selected` es suficiente.
 

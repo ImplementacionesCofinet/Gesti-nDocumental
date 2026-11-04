@@ -20,50 +20,69 @@ async function getDriveId(token: string) {
   return drive.id;
 }
 
+function configuredDocumentFolder() {
+  const configured = process.env.SHAREPOINT_DOCUMENT_FOLDER?.trim().replace(/^\/+|\/+$/g, "");
+  return configured || "invoices";
+}
+
 async function documentUrl(objectKey: string, token: string) {
   const driveId = await getDriveId(token);
-  const path = objectKey.split("/").map(encodeURIComponent).join("/");
+  const [, invoiceFolder, ...fileParts] = objectKey.split("/");
+  const storageSegments = [...configuredDocumentFolder().split("/").filter(Boolean), invoiceFolder, ...fileParts];
+  const path = storageSegments.map(encodeURIComponent).join("/");
   return `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${path}`;
 }
 
+async function ensureFolderPath(token: string, driveId: string, segments: string[]) {
+  let path = "";
+  let parentId: string | undefined;
+
+  for (const segment of segments) {
+    path = path ? `${path}/${encodeURIComponent(segment)}` : encodeURIComponent(segment);
+    const folderUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${path}`;
+    const existing = await fetch(folderUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+
+    if (existing.ok) {
+      const folder = (await existing.json()) as { id?: string };
+      if (!folder.id) throw new Error("SharePoint no devolvió el ID de la carpeta.");
+      parentId = folder.id;
+      continue;
+    }
+    if (existing.status !== 404) throw new Error(`No fue posible comprobar la carpeta de SharePoint (${existing.status}).`);
+
+    const childrenUrl = parentId
+      ? `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(parentId)}/children`
+      : `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root/children`;
+    const created = await fetch(childrenUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: segment, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+      cache: "no-store",
+    });
+    if (!created.ok && created.status !== 409) {
+      throw new Error(`No fue posible crear la carpeta '${segment}' en SharePoint (${created.status}).`);
+    }
+
+    if (created.ok) {
+      const folder = (await created.json()) as { id?: string };
+      if (!folder.id) throw new Error("SharePoint no devolvió el ID de la carpeta creada.");
+      parentId = folder.id;
+    } else {
+      const resolved = await fetch(folderUrl, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      if (!resolved.ok) throw new Error(`No fue posible resolver la carpeta '${segment}' en SharePoint (${resolved.status}).`);
+      const folder = (await resolved.json()) as { id?: string };
+      if (!folder.id) throw new Error("SharePoint no devolvió el ID de la carpeta creada.");
+      parentId = folder.id;
+    }
+  }
+}
+
 async function ensureInvoiceFolder(token: string, driveId: string, invoiceId: string) {
-  const folderPath = `invoices/${encodeURIComponent(invoiceId)}`;
-  const folderUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${folderPath}`;
-  const existing = await fetch(folderUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (existing.ok) return;
-  if (existing.status !== 404) throw new Error(`No fue posible comprobar la carpeta de SharePoint (${existing.status}).`);
-
-  const rootUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root/children`;
-  const rootFolder = await fetch(rootUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "invoices", folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
-    cache: "no-store",
-  });
-  if (!rootFolder.ok && rootFolder.status !== 409) {
-    throw new Error(`No fue posible crear la carpeta de facturas en SharePoint (${rootFolder.status}).`);
-  }
-
-  const parentResponse = await fetch(rootUrl.replace(/\/children$/, ":/invoices"), {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!parentResponse.ok) throw new Error(`No fue posible resolver la carpeta de facturas en SharePoint (${parentResponse.status}).`);
-  const parent = (await parentResponse.json()) as { id?: string };
-  if (!parent.id) throw new Error("Microsoft Graph no devolvió la carpeta de facturas.");
-
-  const childResponse = await fetch(`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(parent.id)}/children`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ name: invoiceId, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
-    cache: "no-store",
-  });
-  if (!childResponse.ok && childResponse.status !== 409) {
-    throw new Error(`No fue posible crear la carpeta del expediente en SharePoint (${childResponse.status}).`);
-  }
+  const segments = [...configuredDocumentFolder().split("/").filter(Boolean), invoiceId];
+  await ensureFolderPath(token, driveId, segments);
 }
 
 export async function uploadDocument(objectKey: string, content: Uint8Array, contentType: string) {

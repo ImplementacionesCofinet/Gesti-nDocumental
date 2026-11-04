@@ -6,5 +6,8 @@ declare namespace Cloudflare {
     GRAPH_TENANT_ID?: string;
     GRAPH_CLIENT_ID?: string;
     GRAPH_CLIENT_SECRET?: string;
+    SHAREPOINT_SITE_ID?: string;
+    SHAREPOINT_DRIVE_ID?: string;
+    SHAREPOINT_DOCUMENT_FOLDER?: string;
   }
 }
