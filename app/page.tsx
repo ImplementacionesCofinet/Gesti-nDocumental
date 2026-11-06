@@ -586,13 +586,20 @@ export default function Home() {
     setSyncingMailbox(true)
     try {
       const response = await fetch("/api/inbox/sync", { method: "POST", cache: "no-store" })
-      const payload = (await response.json()) as {
+      const responseText = await response.text()
+      let payload: {
         error?: string
         mailbox?: string
         processed?: number
         rejected?: number
         skipped?: number
         synchronizedAt?: string
+      } = {}
+      try {
+        payload = JSON.parse(responseText)
+      } catch {
+        const plainMessage = responseText.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+        throw new Error(plainMessage.slice(0, 300) || `El servidor respondió con estado HTTP ${response.status}.`)
       }
       if (!response.ok) throw new Error(payload.error || "No fue posible revisar el buzón.")
       await hydratePersistedInvoices()
