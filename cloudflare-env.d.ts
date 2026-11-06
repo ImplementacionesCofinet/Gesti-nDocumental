@@ -3,6 +3,7 @@ declare namespace Cloudflare {
     DB?: D1Database;
     BUCKET?: R2Bucket;
     INVOICE_MAILBOX_ADDRESS?: string;
+    INVOICE_MAILBOX_START_DATE?: string;
     GRAPH_TENANT_ID?: string;
     GRAPH_CLIENT_ID?: string;
     GRAPH_CLIENT_SECRET?: string;

@@ -23,6 +23,7 @@ Copia `.env.example` a `.env.local` para desarrollo. En Vercel configura las mis
 - `APP_USER_PROFILES`: JSON opcional por email con `area` y `costCenter`.
 - `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`: identidad de aplicación usada por Microsoft Graph para correo y SharePoint.
 - `INVOICE_MAILBOX_ADDRESS`: buzón compartido de facturas; no hay un valor por defecto.
+- `INVOICE_MAILBOX_START_DATE`: primera fecha incluida al sincronizar el buzón. Valor inicial: `2026-10-01`.
 - `SHAREPOINT_SITE_ID`: ID del sitio; la app resuelve la biblioteca predeterminada automáticamente.
 - `SHAREPOINT_DRIVE_ID`: opcional; configura un drive específico si el sitio tiene más de una biblioteca.
 - `SHAREPOINT_DOCUMENT_FOLDER`: ruta base dentro de la biblioteca, por ejemplo `Facturas recibidas` o `Aprobaciones de facturas 2 (EN DESARROLLO)/Facturas recibidas`. La app crea las carpetas que falten.

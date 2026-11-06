@@ -58,6 +58,7 @@ function configuration() {
     tenantId: process.env.GRAPH_TENANT_ID?.trim() || "",
     clientId: process.env.GRAPH_CLIENT_ID?.trim() || "",
     clientSecret: process.env.GRAPH_CLIENT_SECRET?.trim() || "",
+    mailboxStartDate: process.env.INVOICE_MAILBOX_START_DATE?.trim() || "2026-10-01",
   };
 }
 
@@ -473,8 +474,10 @@ export async function POST(request: Request) {
   try {
     const token = await getMicrosoftGraphToken();
     const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}`;
+    const mailboxStartDate = configuration().mailboxStartDate;
+    const receivedFrom = `${mailboxStartDate}T00:00:00Z`;
     const messages = await graphJson<{ value: GraphMessage[] }>(
-      `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$filter=hasAttachments%20eq%20true&$orderby=receivedDateTime%20desc&$top=50`,
+      `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$filter=hasAttachments%20eq%20true%20and%20receivedDateTime%20ge%20${encodeURIComponent(receivedFrom)}&$orderby=receivedDateTime%20desc&$top=50`,
       token,
     );
     let processed = 0;
