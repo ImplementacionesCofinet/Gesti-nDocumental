@@ -475,9 +475,12 @@ export async function POST(request: Request) {
     const token = await getMicrosoftGraphToken();
     const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}`;
     const mailboxStartDate = configuration().mailboxStartDate;
-    const receivedFrom = `${mailboxStartDate}T00:00:00Z`;
+    const cutoffTime = Date.parse(`${mailboxStartDate}T00:00:00Z`);
+    if (!Number.isFinite(cutoffTime)) {
+      throw new Error(`INVOICE_MAILBOX_START_DATE tiene un formato inválido: ${mailboxStartDate}. Usa YYYY-MM-DD.`);
+    }
     const messages = await graphJson<{ value: GraphMessage[] }>(
-      `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$filter=hasAttachments%20eq%20true%20and%20receivedDateTime%20ge%20${encodeURIComponent(receivedFrom)}&$orderby=receivedDateTime%20desc&$top=50`,
+      `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$filter=hasAttachments%20eq%20true&$orderby=receivedDateTime%20desc&$top=50`,
       token,
     );
     let processed = 0;
@@ -486,6 +489,10 @@ export async function POST(request: Request) {
     const errors: string[] = [];
 
     for (const message of messages.value || []) {
+      const receivedTime = Date.parse(message.receivedDateTime);
+      if (Number.isFinite(receivedTime) && receivedTime < cutoffTime) break;
+      if (!Number.isFinite(receivedTime)) continue;
+
       const attachments = await graphJson<{ value: GraphAttachment[] }>(
         `${base}/messages/${encodeURIComponent(message.id)}/attachments?$select=id,name,contentType,size,isInline,@odata.type`,
         token,
