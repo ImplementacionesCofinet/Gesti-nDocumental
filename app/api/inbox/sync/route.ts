@@ -500,7 +500,7 @@ export async function POST(request: Request) {
         if (!Number.isFinite(receivedTime) || message.hasAttachments === false) continue;
 
         const attachments = await graphJson<{ value: GraphAttachment[] }>(
-        `${base}/messages/${encodeURIComponent(message.id)}/attachments?$select=id,name,contentType,size,isInline,@odata.type`,
+        `${base}/messages/${encodeURIComponent(message.id)}/attachments?$select=id,name,contentType,size,isInline`,
         token,
       );
       const messageAttachments = (attachments.value || []).filter((attachment) => !attachment.isInline && Boolean(attachment.name));
