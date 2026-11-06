@@ -15,6 +15,11 @@ type GraphMessage = {
   hasAttachments?: boolean;
 };
 
+type GraphMessagesPage = {
+  value: GraphMessage[];
+  "@odata.nextLink"?: string;
+};
+
 type GraphAttachment = {
   id: string;
   name?: string;
@@ -479,21 +484,22 @@ export async function POST(request: Request) {
     if (!Number.isFinite(cutoffTime)) {
       throw new Error(`INVOICE_MAILBOX_START_DATE tiene un formato inválido: ${mailboxStartDate}. Usa YYYY-MM-DD.`);
     }
-    const messages = await graphJson<{ value: GraphMessage[] }>(
-      `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$filter=hasAttachments%20eq%20true&$orderby=receivedDateTime%20desc&$top=50`,
-      token,
-    );
+    let nextUrl: string | undefined = `${base}/mailFolders/inbox/messages?$select=id,subject,receivedDateTime,hasAttachments&$top=100`;
     let processed = 0;
     let rejected = 0;
     let skipped = 0;
+    let scannedMessages = 0;
     const errors: string[] = [];
 
-    for (const message of messages.value || []) {
-      const receivedTime = Date.parse(message.receivedDateTime);
-      if (Number.isFinite(receivedTime) && receivedTime < cutoffTime) break;
-      if (!Number.isFinite(receivedTime)) continue;
+    while (nextUrl) {
+      const page: GraphMessagesPage = await graphJson<GraphMessagesPage>(nextUrl, token);
+      for (const message of page.value || []) {
+        scannedMessages += 1;
+        const receivedTime = Date.parse(message.receivedDateTime);
+        if (Number.isFinite(receivedTime) && receivedTime < cutoffTime) continue;
+        if (!Number.isFinite(receivedTime) || message.hasAttachments === false) continue;
 
-      const attachments = await graphJson<{ value: GraphAttachment[] }>(
+        const attachments = await graphJson<{ value: GraphAttachment[] }>(
         `${base}/messages/${encodeURIComponent(message.id)}/attachments?$select=id,name,contentType,size,isInline,@odata.type`,
         token,
       );
@@ -536,9 +542,11 @@ export async function POST(request: Request) {
           await markMessage(message.id, attachment.id, mailbox, message, attachment.name || "archivo-adjunto", "error", messageText, null);
         }
       }
+      }
+      nextUrl = page["@odata.nextLink"];
     }
 
-    return Response.json({ mailbox, scannedMessages: messages.value?.length || 0, processed, rejected, skipped, errors, synchronizedAt: new Date().toISOString() });
+    return Response.json({ mailbox, scannedMessages, processed, rejected, skipped, errors, synchronizedAt: new Date().toISOString() });
   } catch (error) {
     const message = error instanceof Error ? error.message : "No fue posible sincronizar el buzón.";
     return Response.json({ error: message, mailbox }, { status: 502 });
