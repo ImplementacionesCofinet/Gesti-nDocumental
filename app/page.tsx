@@ -559,11 +559,19 @@ export default function Home() {
   async function hydratePersistedInvoices() {
     try {
       const response = await fetch("/api/invoices", { cache: "no-store" })
-      if (!response.ok) return
-      const payload = (await response.json()) as { invoices?: Invoice[] }
+      const responseText = await response.text()
+      let payload: { invoices?: Invoice[]; error?: string } = {}
+      try {
+        payload = JSON.parse(responseText)
+      } catch {
+        throw new Error(`No fue posible leer las facturas: respuesta HTTP ${response.status}.`)
+      }
+      if (!response.ok) throw new Error(payload.error || `No fue posible consultar las facturas: HTTP ${response.status}.`)
       setInvoices(payload.invoices ?? [])
-    } catch {
-      // The page remains empty until the authenticated API is available.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No fue posible consultar las facturas."
+      console.error(message)
+      showToast(message)
     }
   }
 
