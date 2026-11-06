@@ -351,6 +351,77 @@ async function ingestZip(
   return { status: "processed", invoiceId };
 }
 
+async function ingestDirectPdf(
+  files: { name: string; content: Uint8Array; kind: string }[],
+  attachment: GraphAttachment,
+  message: GraphMessage,
+  mailbox: string,
+) {
+  const pdfFile = files.find((file) => file.kind === "pdf");
+  if (!pdfFile || files.length !== 1) throw new Error("La factura PDF suelta debe recibirse como un único archivo PDF.");
+
+  const db = getDb();
+  const sourceKey = `pdf:${message.id}:${attachment.id}`;
+  const [existing] = await db.select().from(invoiceRecords).where(eq(invoiceRecords.sourceKey, sourceKey)).limit(1);
+  const invoiceId = existing?.id || crypto.randomUUID();
+  const reference = pdfFile.name.replace(/\.pdf$/i, "");
+  if (!existing) {
+    await db.insert(invoiceRecords).values({
+      id: invoiceId,
+      sourceKey,
+      number: reference,
+      prefix: "",
+      folio: reference,
+      supplier: "Por identificar",
+      supplierNit: "",
+      amount: 0,
+      dueDate: null,
+      dueSource: "Pendiente de identificación",
+      receivedAt: message.receivedDateTime,
+      recipientName: "INVERSORA ARCILAZA S.A.S.",
+      recipientNit: expectedRecipientNit,
+      stage: "Nueva",
+      currentRole: "Radicador",
+      paymentTerm: null,
+      documentType: "Factura electrónica",
+      sourceSubject: message.subject || "",
+      documentReference: reference,
+      routingHint: "CXP",
+      description: "Factura PDF recibida desde el correo. El proveedor y los datos tributarios deben identificarse desde el documento.",
+      cufe: null,
+      history: JSON.stringify([
+        "Factura PDF recibida automáticamente desde el correo",
+        `Buzón de origen: ${mailbox}`,
+        `Archivo recibido: ${pdfFile.name}`,
+        "Pendiente de identificación y validación tributaria",
+      ]),
+      mailbox,
+      sourceMessageId: message.id,
+      sourceAttachmentId: attachment.id,
+    });
+  }
+
+  if (!isDocumentStorageConfigured()) throw new Error("El almacenamiento de documentos no está configurado.");
+  const existingFiles = await db.select().from(invoiceFiles).where(eq(invoiceFiles.invoiceId, invoiceId));
+  if (!existingFiles.some((file) => file.filename === pdfFile.name)) {
+    const id = crypto.randomUUID();
+    const objectKey = `invoices/${invoiceId}/${id}-${pdfFile.name}`;
+    await uploadDocument(objectKey, pdfFile.content, "application/pdf");
+    await db.insert(invoiceFiles).values({
+      id,
+      invoiceId,
+      filename: pdfFile.name,
+      fileKind: "pdf",
+      contentType: "application/pdf",
+      objectKey,
+      size: pdfFile.content.byteLength,
+    });
+  }
+
+  await markMessage(message.id, attachment.id, mailbox, message, pdfFile.name, "processed", null, invoiceId);
+  return { status: "processed", invoiceId };
+}
+
 async function ingestSupport(
   files: { name: string; content: Uint8Array; kind: string }[],
   attachment: GraphAttachment,
@@ -517,8 +588,7 @@ export async function POST(request: Request) {
         const attachmentName = attachment.name?.toLowerCase() || "";
         const isZip = attachmentName.endsWith(".zip");
         const isPdf = attachmentName.endsWith(".pdf");
-        const isSupportEmail = Boolean(supportMetadata);
-        if (!isZip && !(isPdf && isSupportEmail)) continue;
+        if (!isZip && !isPdf) continue;
         const previous = await getExistingMessage(message.id, attachment.id);
         if (previous?.status === "processed" || previous?.status === "rejected") {
           skipped += 1;
@@ -533,7 +603,9 @@ export async function POST(request: Request) {
           const bytes = decodeBase64(fullAttachment.contentBytes);
           const result = isZip
             ? await ingestZip(bytes, attachment, message, mailbox)
-            : await ingestSupport([{ name: attachment.name || "cuenta-de-cobro.pdf", content: bytes, kind: "pdf" }], attachment, message, mailbox, supportMetadata!);
+            : supportMetadata
+              ? await ingestSupport([{ name: attachment.name || "cuenta-de-cobro.pdf", content: bytes, kind: "pdf" }], attachment, message, mailbox, supportMetadata)
+              : await ingestDirectPdf([{ name: attachment.name || "factura.pdf", content: bytes, kind: "pdf" }], attachment, message, mailbox);
           if (result.status === "rejected") rejected += 1;
           else processed += 1;
         } catch (error) {
